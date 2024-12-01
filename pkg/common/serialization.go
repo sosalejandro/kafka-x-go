@@ -1,0 +1,51 @@
+package common
+
+import (
+	"github.com/confluentinc/confluent-kafka-go/v2/schemaregistry"
+	"github.com/confluentinc/confluent-kafka-go/v2/schemaregistry/serde"
+	"github.com/confluentinc/confluent-kafka-go/v2/schemaregistry/serde/avro"
+)
+
+// Serializer defines the interface for serialization and deserialization.
+type Serializer interface {
+	Serialize(topic string, value interface{}) ([]byte, error)
+	Deserialize(topic string, data []byte) (interface{}, error)
+}
+
+// AvroSerializer implements the Serializer interface using Avro.
+type AvroSerializer struct {
+	serializer   *avro.GenericSerializer
+	deserializer *avro.GenericDeserializer
+}
+
+// NewAvroSerializer creates a new AvroSerializer.
+func NewAvroSerializer(schemaRegistryURL string) (*AvroSerializer, error) {
+	client, err := schemaregistry.NewClient(schemaregistry.NewConfig(schemaRegistryURL))
+	if err != nil {
+		return nil, err
+	}
+
+	serializer, err := avro.NewGenericSerializer(client, serde.ValueSerde, avro.NewSerializerConfig())
+	if err != nil {
+		return nil, err
+	}
+
+	deserializer, err := avro.NewGenericDeserializer(client, serde.ValueSerde, avro.NewDeserializerConfig())
+	if err != nil {
+		return nil, err
+	}
+	return &AvroSerializer{
+		serializer:   serializer,
+		deserializer: deserializer,
+	}, nil
+}
+
+// Serialize encodes the value using Avro.
+func (a *AvroSerializer) Serialize(topic string, value interface{}) ([]byte, error) {
+	return a.serializer.Serialize(topic, value)
+}
+
+// Deserialize decodes the data using Avro.
+func (a *AvroSerializer) Deserialize(topic string, data []byte) (interface{}, error) {
+	return a.deserializer.Deserialize(topic, data)
+}
