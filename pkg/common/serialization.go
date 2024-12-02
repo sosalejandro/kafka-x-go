@@ -79,7 +79,7 @@ func NewJsonSerializer(schemaRegistryURL string) (*JsonSerializer, error) {
 }
 
 func (j *JsonSerializer) Serialize(topic string, value interface{}) ([]byte, error) {
-	return j.serializer.Serialize(topic, value)
+	return j.serializer.Serialize(topic, &value)
 }
 
 func (j *JsonSerializer) Deserialize(topic string, data []byte) (interface{}, error) {
