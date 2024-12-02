@@ -4,6 +4,7 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/v2/schemaregistry"
 	"github.com/confluentinc/confluent-kafka-go/v2/schemaregistry/serde"
 	"github.com/confluentinc/confluent-kafka-go/v2/schemaregistry/serde/avro"
+	"github.com/confluentinc/confluent-kafka-go/v2/schemaregistry/serde/jsonschema"
 )
 
 // Serializer defines the interface for serialization and deserialization.
@@ -48,4 +49,31 @@ func (a *AvroSerializer) Serialize(topic string, value interface{}) ([]byte, err
 // Deserialize decodes the data using Avro.
 func (a *AvroSerializer) Deserialize(topic string, data []byte) (interface{}, error) {
 	return a.deserializer.Deserialize(topic, data)
+}
+
+type JsonSerializer struct {
+	serializer   *jsonschema.Serializer
+	deserializer *jsonschema.Deserializer
+}
+
+func NewJsonSerializer(schemaRegistryURL string) (*JsonSerializer, error) {
+	client, err := schemaregistry.NewClient(schemaregistry.NewConfig(schemaRegistryURL))
+	if err != nil {
+		return nil, err
+	}
+
+	serializer, err := jsonschema.NewSerializer(client, serde.ValueSerde, jsonschema.NewSerializerConfig())
+	if err != nil {
+		return nil, err
+	}
+
+	deserializer, err := jsonschema.NewDeserializer(client, serde.ValueSerde, jsonschema.NewDeserializerConfig())
+	if err != nil {
+		return nil, err
+	}
+
+	return &JsonSerializer{
+		serializer:   serializer,
+		deserializer: deserializer,
+	}, nil
 }
