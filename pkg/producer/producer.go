@@ -1,6 +1,8 @@
 package producer
 
 import (
+	"log"
+
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/sosalejandro/kafka-x-go/pkg/common"
 )
@@ -33,12 +35,30 @@ func (p *Producer) Produce(topic string, key interface{}, value interface{}) err
 	if err != nil {
 		return err
 	}
+	deliveryChan := make(chan kafka.Event)
+	defer close(deliveryChan)
 
-	return p.producer.Produce(&kafka.Message{
+	err = p.producer.Produce(&kafka.Message{
 		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
 		Key:            serializedKey,
 		Value:          serializedValue,
-	}, nil)
+	}, deliveryChan)
+
+	if err != nil {
+		log.Printf("Failed to produce message: %v", err)
+		return err
+	}
+
+	e := <-deliveryChan
+	m := e.(*kafka.Message)
+	if m.TopicPartition.Error != nil {
+		log.Printf("Delivery failed: %v", m.TopicPartition.Error)
+		return m.TopicPartition.Error
+	}
+
+	log.Printf("Produced message: key=%s, value=%s", key, value)
+
+	return nil
 }
 
 // Close cleans up the producer.
