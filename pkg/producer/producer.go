@@ -42,6 +42,7 @@ func (p *Producer) Produce(topic string, key interface{}, value interface{}) err
 		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
 		Key:            serializedKey,
 		Value:          serializedValue,
+		Headers:        []kafka.Header{{Key: string(serializedKey), Value: serializedKey}},
 	}, deliveryChan)
 
 	if err != nil {
