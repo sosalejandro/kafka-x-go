@@ -75,28 +75,34 @@ func (c *Consumer) Start(ctx context.Context, topics []string) error {
 			log.Println("Shutting down consumer...")
 			return nil
 		default:
-			msg, err := c.consumer.ReadMessage(-1)
-			if err != nil {
-				log.Printf("Consumer error: %v", err)
+			ev := c.consumer.Poll(100)
+			if ev == nil {
 				continue
 			}
 
-			topic := *msg.TopicPartition.Topic
-			handler, exists := c.registry.GetHandler(topic)
-			if !exists {
-				log.Printf("No handler registered for topic: %s", topic)
-				continue
-			}
+			switch e := ev.(type) {
+			case *kafka.Message:
+				topic := *e.TopicPartition.Topic
+				handler, exists := c.registry.GetHandler(topic)
+				if !exists {
+					log.Printf("No handler registered for topic: %s", topic)
+					continue
+				}
 
-			key := msg.Key
-			value, err := c.deserializer.Deserialize(topic, msg.Value)
-			if err != nil {
-				log.Printf("Deserialization error for topic %s: %v", topic, err)
-				continue
-			}
+				key := e.Key
+				value, err := c.deserializer.Deserialize(topic, e.Value)
+				if err != nil {
+					log.Printf("Deserialization error for topic %s: %v", topic, err)
+					continue
+				}
 
-			if err := handler.HandleMessage(ctx, key, value, c.producer); err != nil {
-				log.Printf("Error handling message from topic %s: %v", topic, err)
+				if err := handler.HandleMessage(ctx, key, value, c.producer); err != nil {
+					log.Printf("Error handling message from topic %s: %v", topic, err)
+				}
+			case kafka.Error:
+				log.Printf("Consumer error: %v", e)
+			default:
+				log.Printf("Ignored event: %v", e)
 			}
 		}
 	}
