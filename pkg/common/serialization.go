@@ -1,6 +1,9 @@
 package common
 
 import (
+	"fmt"
+	"log"
+
 	"github.com/confluentinc/confluent-kafka-go/v2/schemaregistry"
 	"github.com/confluentinc/confluent-kafka-go/v2/schemaregistry/serde"
 	"github.com/confluentinc/confluent-kafka-go/v2/schemaregistry/serde/avro"
@@ -79,9 +82,18 @@ func NewJsonSerializer(schemaRegistryURL string) (*JsonSerializer, error) {
 }
 
 func (j *JsonSerializer) Serialize(topic string, value interface{}) ([]byte, error) {
+	if j.serializer == nil {
+		log.Println("Serializer is nil")
+		return nil, fmt.Errorf("serializer is nil")
+	}
+
 	return j.serializer.Serialize(topic, &value)
 }
 
 func (j *JsonSerializer) Deserialize(topic string, data []byte) (interface{}, error) {
+	if j.deserializer == nil {
+		log.Println("Deserializer is nil")
+		return nil, fmt.Errorf("deserializer is nil")
+	}
 	return j.deserializer.Deserialize(topic, data)
 }
