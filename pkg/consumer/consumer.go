@@ -10,29 +10,30 @@ import (
 )
 
 // MessageHandler is the interface that defines the contract for handling messages.
-type MessageHandler interface {
-	HandleMessage(ctx context.Context, key interface{}, value interface{}, producer *producer.Producer) error
+type MessageHandler[T any] interface {
+	HandleMessage(ctx context.Context, key interface{}, value T, producer *producer.Producer) error
+	GetMessageDTO() T
 }
 
 // HandlerRegistry maps topics to MessageHandler instances.
 type HandlerRegistry struct {
-	handlers map[string]MessageHandler
+	handlers map[string]MessageHandler[any]
 }
 
 // NewHandlerRegistry initializes an empty HandlerRegistry.
 func NewHandlerRegistry() *HandlerRegistry {
 	return &HandlerRegistry{
-		handlers: make(map[string]MessageHandler),
+		handlers: make(map[string]MessageHandler[any]),
 	}
 }
 
 // RegisterHandler associates a handler with a topic.
-func (r *HandlerRegistry) RegisterHandler(topic string, handler MessageHandler) {
+func (r *HandlerRegistry) RegisterHandler(topic string, handler MessageHandler[any]) {
 	r.handlers[topic] = handler
 }
 
 // GetHandler retrieves the handler for the given topic.
-func (r *HandlerRegistry) GetHandler(topic string) (MessageHandler, bool) {
+func (r *HandlerRegistry) GetHandler(topic string) (MessageHandler[any], bool) {
 	handler, exists := r.handlers[topic]
 	return handler, exists
 }
@@ -90,7 +91,7 @@ func (c *Consumer) Start(ctx context.Context, topics []string) error {
 				}
 
 				key := e.Key
-				var value interface{}
+				value := handler.GetMessageDTO()
 				err := c.deserializer.DeserializeInto(topic, e.Value, &value)
 				if err != nil {
 					log.Printf("Deserialization error for topic %s: %v", topic, err)
@@ -107,4 +108,8 @@ func (c *Consumer) Start(ctx context.Context, topics []string) error {
 			}
 		}
 	}
+}
+
+func (c *Consumer) Close() {
+	c.consumer.Close()
 }
