@@ -90,7 +90,8 @@ func (c *Consumer) Start(ctx context.Context, topics []string) error {
 				}
 
 				key := e.Key
-				value, err := c.deserializer.Deserialize(topic, e.Value)
+				var value interface{}
+				err := c.deserializer.DeserializeInto(topic, e.Value, &value)
 				if err != nil {
 					log.Printf("Deserialization error for topic %s: %v", topic, err)
 					continue

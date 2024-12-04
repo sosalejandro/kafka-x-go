@@ -14,6 +14,7 @@ import (
 type Serializer interface {
 	Serialize(topic string, value interface{}) ([]byte, error)
 	Deserialize(topic string, data []byte) (interface{}, error)
+	DeserializeInto(topic string, data []byte, msg *interface{}) error
 }
 
 // AvroSerializer implements the Serializer interface using Avro.
@@ -54,6 +55,10 @@ func (a *AvroSerializer) Deserialize(topic string, data []byte) (interface{}, er
 	return a.deserializer.Deserialize(topic, data)
 }
 
+func (a *AvroSerializer) DeserializeInto(topic string, data []byte, msg *interface{}) error {
+	return a.deserializer.DeserializeInto(topic, data, &msg)
+}
+
 type JsonSerializer struct {
 	serializer   *jsonschema.Serializer
 	deserializer *jsonschema.Deserializer
@@ -87,7 +92,7 @@ func (j *JsonSerializer) Serialize(topic string, value interface{}) ([]byte, err
 		return nil, fmt.Errorf("serializer is nil")
 	}
 
-	return j.serializer.Serialize(topic, value)
+	return j.serializer.Serialize(topic, &value)
 }
 
 func (j *JsonSerializer) Deserialize(topic string, data []byte) (interface{}, error) {
@@ -96,4 +101,8 @@ func (j *JsonSerializer) Deserialize(topic string, data []byte) (interface{}, er
 		return nil, fmt.Errorf("deserializer is nil")
 	}
 	return j.deserializer.Deserialize(topic, data)
+}
+
+func (j *JsonSerializer) DeserializeInto(topic string, data []byte, msg *interface{}) error {
+	return j.deserializer.DeserializeInto(topic, data, &msg)
 }
