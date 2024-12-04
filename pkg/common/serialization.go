@@ -87,7 +87,7 @@ func (j *JsonSerializer) Serialize(topic string, value interface{}) ([]byte, err
 		return nil, fmt.Errorf("serializer is nil")
 	}
 
-	return j.serializer.Serialize(topic, &value)
+	return j.serializer.Serialize(topic, value)
 }
 
 func (j *JsonSerializer) Deserialize(topic string, data []byte) (interface{}, error) {
