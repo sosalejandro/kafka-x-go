@@ -3,6 +3,7 @@ package consumer
 import (
 	"context"
 	"log"
+	"reflect"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/sosalejandro/kafka-x-go/pkg/common"
@@ -12,7 +13,7 @@ import (
 // MessageHandler is the interface that defines the contract for handling messages.
 type MessageHandler[T any] interface {
 	HandleMessage(ctx context.Context, key interface{}, value T, producer *producer.Producer) error
-	GetMessageDTO() T
+	GetMessageType() reflect.Type
 }
 
 // HandlerRegistry maps topics to MessageHandler instances.
@@ -91,7 +92,8 @@ func (c *Consumer) Start(ctx context.Context, topics []string) error {
 				}
 
 				key := e.Key
-				value := handler.GetMessageDTO()
+				valueType := handler.GetMessageType()
+				value := reflect.New(valueType).Interface()
 				err := c.deserializer.DeserializeInto(topic, e.Value, &value)
 				if err != nil {
 					log.Printf("Deserialization error for topic %s: %v", topic, err)
