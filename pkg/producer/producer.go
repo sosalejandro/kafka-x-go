@@ -2,14 +2,17 @@ package producer
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/sosalejandro/kafka-x-go/pkg/common"
 	"github.com/sosalejandro/kafka-x-go/pkg/common/retry"
 	"github.com/sosalejandro/kafka-x-go/pkg/metrics"
+	"github.com/sosalejandro/kafka-x-go/pkg/observability"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -43,20 +46,25 @@ func NewProducer(config common.KafkaConfig, serializer common.Serializer, logger
 // Produce sends a message to the specified topic with retry logic.
 func (p *Producer) Produce(ctx context.Context, topic string, key interface{}, value interface{}) error {
 	// Start span for producing message
-	ctx, span := otel.Tracer("").Start(ctx, "Producer.Produce")
+	ctx, span := otel.Tracer(fmt.Sprintf("%s-producer", topic)).Start(ctx, "Producer.Produce")
 	defer span.End()
+
+	otelAttrs := attribute.NewSet(
+		attribute.String("topic", topic),
+		attribute.String("key", string(key.(string))),
+	)
 
 	// observability: Add event for producing message
 	span.AddEvent("Producing message", trace.WithAttributes(
-		attribute.String("topic", topic),
-		attribute.String("key", key.(string)),
+		otelAttrs.ToSlice()...,
 	))
 
 	serializedValue, err := p.serializer.Serialize(topic, value)
 	if err != nil {
 		// observability: record error
-		metrics.GetSerializationErrorsCounter().Add(ctx, 1)
+		metrics.GetSerializationErrorsCounter().Add(ctx, 1, metric.WithAttributeSet(otelAttrs))
 		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to serialize message value")
 		p.logger.Error("Failed to serialize message value", zap.Error(err), zap.String("topic", topic))
 		return err
 	}
@@ -69,8 +77,9 @@ func (p *Producer) Produce(ctx context.Context, topic string, key interface{}, v
 	serializedKey, err := p.serializer.Serialize(topic, key)
 	if err != nil {
 		// observability: record error
-		metrics.GetSerializationErrorsCounter().Add(ctx, 1)
+		metrics.GetSerializationErrorsCounter().Add(ctx, 1, metric.WithAttributeSet(otelAttrs))
 		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to serialize message key")
 		p.logger.Error("Failed to serialize message key", zap.Error(err), zap.String("topic", topic))
 		return err
 	}
@@ -90,11 +99,18 @@ func (p *Producer) Produce(ctx context.Context, topic string, key interface{}, v
 		deliveryChan := make(chan kafka.Event, 1)
 		defer close(deliveryChan)
 
+		// Create a headers carrier and inject the context
+		headers := make([]kafka.Header, 0)
+		// Wrap headers in KafkaHeadersCarrier using a pointer
+		carrier := observability.NewKafkaHeadersCarrier(headers)
+		carrier.Set(string(serializedKey), string(serializedKey))
+		otel.GetTextMapPropagator().Inject(ctx, carrier)
+
 		err = p.producer.Produce(&kafka.Message{
 			TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
 			Key:            serializedKey,
 			Value:          serializedValue,
-			Headers:        []kafka.Header{{Key: string(serializedKey), Value: serializedKey}},
+			Headers:        carrier.GetHeaders(),
 		}, deliveryChan)
 
 		spanAttr := attribute.NewSet(
@@ -110,6 +126,7 @@ func (p *Producer) Produce(ctx context.Context, topic string, key interface{}, v
 				if m.TopicPartition.Error != nil {
 					// observability: record error
 					span.RecordError(m.TopicPartition.Error)
+					span.SetStatus(codes.Error, "Failed to deliver message")
 					p.logger.Error("Delivery failed", zap.Error(m.TopicPartition.Error), zap.String("topic", topic))
 
 					err = m.TopicPartition.Error
@@ -119,7 +136,9 @@ func (p *Producer) Produce(ctx context.Context, topic string, key interface{}, v
 					))
 				} else {
 					// observability: add event
-					metrics.GetSuccessfulMessagesCounter().Add(ctx, 1)
+					metrics.GetSuccessfulMessagesCounter().Add(ctx, 1,
+						metric.WithAttributeSet(spanAttr),
+					)
 					span.AddEvent("Message delivered", trace.WithAttributes(
 						spanAttr.ToSlice()...,
 					))
@@ -134,6 +153,7 @@ func (p *Producer) Produce(ctx context.Context, topic string, key interface{}, v
 			case <-ctx.Done():
 				// observability: record error
 				span.RecordError(ctx.Err())
+				span.SetStatus(codes.Error, "Context cancelled while waiting for delivery confirmation")
 				p.logger.Error("Context cancelled while waiting for delivery confirmation", zap.Error(ctx.Err()), zap.String("topic", topic))
 				return ctx.Err()
 			}
@@ -146,6 +166,8 @@ func (p *Producer) Produce(ctx context.Context, topic string, key interface{}, v
 				span.AddEvent("Exceeded max retries", trace.WithAttributes(
 					attribute.Int("max_retries", p.retryStrategy.MaxRetries()),
 				))
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "Failed to produce message after maximum retries")
 				p.logger.Error("Failed to produce message after maximum retries", zap.Error(err), zap.String("topic", topic))
 				return err
 			}
@@ -161,6 +183,7 @@ func (p *Producer) Produce(ctx context.Context, topic string, key interface{}, v
 			case <-ctx.Done():
 				// observability: record error
 				span.RecordError(ctx.Err())
+				span.SetStatus(codes.Error, "Context cancelled before retrying")
 				p.logger.Error("Context cancelled before retrying", zap.Error(ctx.Err()), zap.String("topic", topic))
 				timer.Stop()
 				return ctx.Err()
