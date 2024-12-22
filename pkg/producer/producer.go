@@ -101,6 +101,14 @@ func (p *Producer) Produce(ctx context.Context, topic string, key interface{}, v
 
 		// Create a headers carrier and inject the context
 		headers := make([]kafka.Header, 0)
+
+		for k, v := range extractContextValues(ctx) {
+			headers = append(headers, kafka.Header{
+				Key:   k,
+				Value: []byte(v),
+			})
+		}
+
 		// Wrap headers in KafkaHeadersCarrier using a pointer
 		carrier := observability.NewKafkaHeadersCarrier(headers)
 		carrier.Set(string(serializedKey), string(serializedKey))
@@ -198,4 +206,14 @@ func (p *Producer) Produce(ctx context.Context, topic string, key interface{}, v
 // Close cleans up the producer.
 func (p *Producer) Close() {
 	p.producer.Close()
+}
+
+func extractContextValues(ctx context.Context) map[string]string {
+	values := make(map[string]string)
+	if ctxValues, ok := ctx.Value(common.MapKey).(map[string]string); ok {
+		for k, v := range ctxValues {
+			values[k] = v
+		}
+	}
+	return values
 }
