@@ -1,7 +1,7 @@
 package common
 
-type contextKey string
+type ContextKey string
 
 const (
-	MapKey contextKey = "contextMap"
+	MapKey ContextKey = "contextMap"
 )

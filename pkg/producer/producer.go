@@ -51,7 +51,7 @@ func (p *Producer) Produce(ctx context.Context, topic string, key interface{}, v
 
 	otelAttrs := attribute.NewSet(
 		attribute.String("topic", topic),
-		attribute.String("key", string(key.(string))),
+		attribute.String("key", key.(string)),
 	)
 
 	// observability: Add event for producing message
@@ -150,7 +150,7 @@ func (p *Producer) Produce(ctx context.Context, topic string, key interface{}, v
 					span.AddEvent("Message delivered", trace.WithAttributes(
 						spanAttr.ToSlice()...,
 					))
-					p.logger.Info("Produced message successfully", zap.String("key", string(serializedKey)), zap.String("value", string(serializedValue)))
+					p.logger.Info("Produced message successfully", zap.ByteString("key", serializedKey), zap.ByteString("value", serializedValue))
 
 					metrics.GetSentMessagesCounter().Add(ctx, 1, metric.WithAttributeSet(
 						spanAttr,
