@@ -44,14 +44,14 @@ func NewProducer(config common.KafkaConfig, serializer common.Serializer, logger
 }
 
 // Produce sends a message to the specified topic with retry logic.
-func (p *Producer) Produce(ctx context.Context, topic string, key interface{}, value interface{}) error {
+func (p *Producer) Produce(ctx context.Context, topic string, key string, value interface{}) error {
 	// Start span for producing message
 	ctx, span := otel.Tracer(fmt.Sprintf("%s-producer", topic)).Start(ctx, "Producer.Produce")
 	defer span.End()
 
 	otelAttrs := attribute.NewSet(
 		attribute.String("topic", topic),
-		attribute.String("key", key.(string)),
+		attribute.String("key", key),
 	)
 
 	// observability: Add event for producing message
@@ -111,7 +111,6 @@ func (p *Producer) Produce(ctx context.Context, topic string, key interface{}, v
 
 		// Wrap headers in KafkaHeadersCarrier using a pointer
 		carrier := observability.NewKafkaHeadersCarrier(headers)
-		carrier.Set(string(serializedKey), string(serializedKey))
 		otel.GetTextMapPropagator().Inject(ctx, carrier)
 
 		err = p.producer.Produce(&kafka.Message{
@@ -123,7 +122,7 @@ func (p *Producer) Produce(ctx context.Context, topic string, key interface{}, v
 
 		spanAttr := attribute.NewSet(
 			attribute.String("topic", topic),
-			attribute.String("key", string(serializedKey)),
+			attribute.String("key", key),
 			attribute.Int("attempt", attempt),
 		)
 

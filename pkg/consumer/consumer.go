@@ -180,6 +180,14 @@ func (c *Consumer) processMessage(ctx context.Context, msg *kafka.Message, handl
 	carrier := observability.NewKafkaHeadersCarrier(msg.Headers)
 	ctx = otel.GetTextMapPropagator().Extract(ctx, carrier)
 
+	// Enrich ctx with kafka headers but traceparent field
+	contexMap := make(map[string]string)
+	ctxKey := common.MapKey
+	for _, v := range carrier.GetHeaders() {
+		contexMap[v.Key] = string(v.Value)
+	}
+	ctx = context.WithValue(ctx, ctxKey, contexMap)
+
 	// Start a new span
 	ctx, span := otel.Tracer("").Start(ctx, "Consumer.processMessage")
 	defer span.End()
@@ -365,7 +373,7 @@ func (c *Consumer) sendToDLQ(ctx context.Context, dlqTopic string, msg *kafka.Me
 	}
 
 	// Produce the message to the specified DLQ topic
-	err = c.producer.Produce(ctx, dlqTopic, msg.Key, serialized)
+	err = c.producer.Produce(ctx, dlqTopic, string(msg.Key), serialized)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "Error sending message to DLQ")
