@@ -24,7 +24,7 @@ import (
 
 // MessageHandler is the interface that defines the contract for handling messages.
 type MessageHandler[T any] interface {
-	HandleMessage(ctx context.Context, key interface{}, value T, producer *producer.Producer) error
+	HandleMessage(ctx context.Context, key string, value T, producer *producer.Producer) error
 	GetMessageType() reflect.Type
 }
 
@@ -193,12 +193,23 @@ func (c *Consumer) processMessage(ctx context.Context, msg *kafka.Message, handl
 	defer span.End()
 
 	topic := *msg.TopicPartition.Topic
-	key := msg.Key
+	var deserializedKey interface{}
+	err := c.deserializer.DeserializeInto(topic, msg.Key, &deserializedKey)
+	if err != nil {
+		// observability: Record error in the span
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Error deserializing message key")
+		metrics.GetDeserializationErrorsCounter().Add(ctx, 1, metric.WithAttributeSet(
+			attribute.NewSet(attribute.String("topic", topic)),
+		))
+		c.logger.Error("Error deserializing message key", zap.Error(err), zap.String("topic", topic))
+	}
+	key := deserializedKey.(string)
 	valueType := handler.GetMessageType()
 
 	otelAttrs := attribute.NewSet(
 		attribute.String("topic", topic),
-		attribute.String("key", string(key)),
+		attribute.String("key", key),
 		attribute.String("message_type", valueType.String()),
 	)
 
@@ -208,7 +219,7 @@ func (c *Consumer) processMessage(ctx context.Context, msg *kafka.Message, handl
 	)
 
 	value := reflect.New(valueType).Interface()
-	err := c.deserializer.DeserializeInto(topic, msg.Value, &value)
+	err = c.deserializer.DeserializeInto(topic, msg.Value, &value)
 	if err != nil {
 		// observability: Record error in the span
 		span.RecordError(err)
