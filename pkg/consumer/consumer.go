@@ -234,6 +234,7 @@ func (c *Consumer) processMessage(ctx context.Context, msg *kafka.Message, handl
 
 	var attempt int
 
+	// TODO: Include opTracker on this library and remove it from the handlers operations
 	for {
 		attempt++
 		// observability: Add event for each attempt
